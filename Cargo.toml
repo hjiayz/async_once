@@ -1,0 +1,34 @@
+[package]
+name = 'async_once'
+version = '0.1.0'
+authors = ['hjiayz <hjiayz@gmail.com>']
+edition = '2018'
+keywords = [
+    'async',
+    'lazy_static',
+]
+description = 'async once tool for lazy_static'
+homepage = 'https://github.com/hjiayz/async_once'
+repository = 'https://github.com/hjiayz/async_once'
+readme = 'README.MD'
+license = 'MIT OR Apache-2.0'
+
+[dependencies]
+futures = '0.3.5'
+
+[dependencies.tokio]
+version = '0.2.21'
+optional = true
+features = ['rt-core']
+
+[dependencies.async-std]
+version = '1.6.2'
+optional = true
+
+[dependencies.wasm-bindgen-futures]
+version = '0.4.15'
+optional = true
+
+[dev-dependencies]
+lazy_static = '1.4.0'
+wasm-bindgen-test = '0.3.15'
