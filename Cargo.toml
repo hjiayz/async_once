@@ -1,6 +1,6 @@
 [package]
 name = 'async_once'
-version = '0.1.0'
+version = '0.2.0'
 authors = ['hjiayz <hjiayz@gmail.com>']
 edition = '2018'
 keywords = [
@@ -14,21 +14,11 @@ readme = 'README.MD'
 license = 'MIT OR Apache-2.0'
 
 [dependencies]
-futures = '0.3.5'
-
-[dependencies.tokio]
-version = '0.2.21'
-optional = true
-features = ['rt-core']
-
-[dependencies.async-std]
-version = '1.6.2'
-optional = true
-
-[dependencies.wasm-bindgen-futures]
-version = '0.4.15'
-optional = true
+futures = "0.3.5"
 
 [dev-dependencies]
-lazy_static = '1.4.0'
-wasm-bindgen-test = '0.3.15'
+lazy_static = "1.4.0"
+wasm-bindgen-test = "0.3.18"
+tokio = "0.2.22"
+async-std = "1.6.4"
+wasm-bindgen-futures = "0.4.18"

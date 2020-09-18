@@ -1,32 +1,29 @@
-## async once tool for lazy_static
+# async_once
 
-### features:
-* tokio
-* async-std
-* wasm-bindgen-futures
+### async once tool for lazy_static
 
-### sample 
+## Examples
 ```rust
-    use lazy_static::lazy_static;
-    use tokio::runtime::Runtime;
-    // tokio feature
-    use async_once::AsyncOnce;
+   use lazy_static::lazy_static;
+   use tokio::runtime::Runtime;
+   use async_once::AsyncOnce;
 
-    lazy_static!{
-        static ref FOO : AsyncOnce<u32> = AsyncOnce::new(async{
-            1
-        });
-    }
-    let mut rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        assert_eq!(FOO.get().await , 1)
-    })
+   lazy_static!{
+       static ref FOO : AsyncOnce<u32> = AsyncOnce::new(async{
+           1
+       });
+   }
+   let mut rt = Runtime::new().unwrap();
+   rt.block_on(async {
+       assert_eq!(FOO.get().await , &1)
+   })
 ```
 
-### run tests
+#### run tests
 
+```rust
+cargo test
+wasm-pack test --node
 ```
-    cargo test --features tokio
-    cargo test --features async-std
-    wasm-pack test --node -- --features wasm-bindgen-futures
-```
+
+License: MIT OR Apache-2.0
