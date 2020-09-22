@@ -19,6 +19,8 @@ futures = "0.3.5"
 [dev-dependencies]
 lazy_static = "1.4.0"
 wasm-bindgen-test = "0.3.18"
-tokio = "0.2.22"
+tokio = { version = "0.2.22", features = ["rt-core"] }
 async-std = "1.6.4"
 wasm-bindgen-futures = "0.4.18"
+futures-timer = "3.0.2"
+gloo-timers = "0.2.1"

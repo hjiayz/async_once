@@ -21,9 +21,8 @@
 
 #### run tests
 
-```rust
 cargo test
-wasm-pack test --node
-```
+wasm-pack test --headless --chrome --firefox
+
 
 License: MIT OR Apache-2.0
