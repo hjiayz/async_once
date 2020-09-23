@@ -10,9 +10,9 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 #[wasm_bindgen_test]
 async fn lazy_static_test_for_wasm() {
     use async_once::AsyncOnce;
+    use gloo_timers::future::TimeoutFuture;
     use lazy_static::lazy_static;
     use wasm_bindgen_futures::spawn_local;
-    use gloo_timers::future::TimeoutFuture;
 
     lazy_static! {
         static ref FOO: AsyncOnce<u32> = AsyncOnce::new(async {
