@@ -24,7 +24,6 @@
 //!
 
 use futures::future::FutureExt;
-use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::RwLock;
@@ -32,7 +31,7 @@ use std::task::Context;
 use std::task::Poll;
 
 pub struct AsyncOnce<T: 'static> {
-    ptr: Cell<Option<&'static T>>,
+    ptr: Option<&'static T>,
     fut: RwLock<Result<T, Pin<Box<dyn Future<Output = T>>>>>,
 }
 
@@ -44,7 +43,7 @@ impl<T> AsyncOnce<T> {
         F: Future<Output = T> + 'static,
     {
         AsyncOnce {
-            ptr: Cell::new(None),
+            ptr: None,
             fut: RwLock::new(Err(Box::pin(fut))),
         }
     }
@@ -56,31 +55,30 @@ impl<T> AsyncOnce<T> {
 impl<T> Future for &'static AsyncOnce<T> {
     type Output = &'static T;
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<&'static T> {
-        loop {
-            let ptr = self.ptr.get();
-            if let Some(ptr) = ptr {
+        if let Some(ptr) = self.ptr {
+            return Poll::Ready(ptr);
+        }
+        if let Ok(val) = self.fut.try_read() {
+            if let Ok(val) = val.as_ref() {
+                return Poll::Ready(unsafe { (val as *const T).as_ref().unwrap() });
+            }
+        }
+        if let Ok(mut fut) = self.fut.try_write() {
+            let mut result = None;
+            if let Err(fut) = fut.as_mut() {
+                if let Poll::Ready(val) = fut.poll_unpin(cx) {
+                    result = Some(val);
+                }
+            }
+            if result.is_some() {
+                *fut = Ok(result.unwrap());
+                let ptr = unsafe { (fut.as_ref().ok().unwrap() as *const T).as_ref().unwrap() };
+                let this = (*self) as *const _ as *mut AsyncOnce<T>;
+                unsafe {
+                    (*this).ptr = Some(ptr);
+                }
                 return Poll::Ready(ptr);
             }
-            if let Ok(val) = self.fut.try_read() {
-                if let Ok(val) = val.as_ref() {
-                    return Poll::Ready(unsafe { (val as *const T).as_ref().unwrap() });
-                }
-            }
-            if let Ok(mut fut) = self.fut.try_write() {
-                let mut result = None;
-                if let Err(fut) = fut.as_mut() {
-                    if let Poll::Ready(val) = fut.poll_unpin(cx) {
-                        result = Some(val);
-                    }
-                }
-                if result.is_some() {
-                    *fut = Ok(result.unwrap());
-                    let ptr = unsafe { (fut.as_ref().ok().unwrap() as *const T).as_ref().unwrap() };
-                    self.ptr.set(Some(ptr));
-                    continue;
-                }
-            }
-            break;
         }
         Poll::Pending
     }
