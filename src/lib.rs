@@ -26,12 +26,13 @@
 use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
+use std::ptr::null;
 use std::sync::RwLock;
 use std::task::Context;
 use std::task::Poll;
 
 pub struct AsyncOnce<T: 'static> {
-    ptr: Option<&'static T>,
+    ptr: *const T,
     fut: RwLock<Result<T, Pin<Box<dyn Future<Output = T>>>>>,
 }
 
@@ -43,10 +44,11 @@ impl<T> AsyncOnce<T> {
         F: Future<Output = T> + 'static,
     {
         AsyncOnce {
-            ptr: None,
+            ptr: null(),
             fut: RwLock::new(Err(Box::pin(fut))),
         }
     }
+    #[inline]
     pub fn get(&'static self) -> &'static Self {
         self
     }
@@ -55,7 +57,7 @@ impl<T> AsyncOnce<T> {
 impl<T> Future for &'static AsyncOnce<T> {
     type Output = &'static T;
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<&'static T> {
-        if let Some(ptr) = self.ptr {
+        if let Some(ptr) = unsafe { self.ptr.as_ref() } {
             return Poll::Ready(ptr);
         }
         if let Ok(val) = self.fut.try_read() {
@@ -72,12 +74,12 @@ impl<T> Future for &'static AsyncOnce<T> {
             }
             if result.is_some() {
                 *fut = Ok(result.unwrap());
-                let ptr = unsafe { (fut.as_ref().ok().unwrap() as *const T).as_ref().unwrap() };
+                let ptr = fut.as_ref().ok().unwrap() as *const T;
                 let this = (*self) as *const _ as *mut AsyncOnce<T>;
                 unsafe {
-                    (*this).ptr = Some(ptr);
+                    (*this).ptr = ptr;
                 }
-                return Poll::Ready(ptr);
+                return Poll::Ready(unsafe { &*ptr });
             }
         }
         Poll::Pending
