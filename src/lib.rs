@@ -25,7 +25,6 @@
 //! ```
 //!
 
-use futures::future::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 use std::ptr::null;
@@ -72,7 +71,7 @@ impl<T> Future for &'static AsyncOnce<T> {
         if let Ok(mut fut) = self.fut.try_write() {
             let mut result = None;
             if let Err(fut) = fut.as_mut() {
-                if let Poll::Ready(val) = fut.poll_unpin(cx) {
+                if let Poll::Ready(val) = Pin::new(fut).poll(cx) {
                     result = Some(val);
                 }
             }
