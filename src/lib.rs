@@ -3,7 +3,7 @@
 //! # Examples
 //! ```rust
 //!    use lazy_static::lazy_static;
-//!    use tokio::runtime::Runtime;
+//!    use tokio::runtime::Builder;
 //!    use async_once::AsyncOnce;
 //!
 //!    lazy_static!{
@@ -11,7 +11,7 @@
 //!            1
 //!        });
 //!    }
-//!    let mut rt = Runtime::new().unwrap();
+//!    let rt = Builder::new_current_thread().build().unwrap();
 //!    rt.block_on(async {
 //!        assert_eq!(FOO.get().await , &1)
 //!    })
@@ -31,9 +31,10 @@ use std::sync::RwLock;
 use std::task::Context;
 use std::task::Poll;
 
+type Fut<T> = RwLock<Result<T, Pin<Box<dyn Future<Output = T>>>>>;
 pub struct AsyncOnce<T: 'static> {
     ptr: *const T,
-    fut: RwLock<Result<T, Pin<Box<dyn Future<Output = T>>>>>,
+    fut: Fut<T>,
 }
 
 unsafe impl<T: 'static> Sync for AsyncOnce<T> {}
@@ -48,7 +49,7 @@ impl<T> AsyncOnce<T> {
             fut: RwLock::new(Err(Box::pin(fut))),
         }
     }
-    #[inline]
+    #[inline(always)]
     pub fn get(&'static self) -> &'static Self {
         self
     }
@@ -56,6 +57,7 @@ impl<T> AsyncOnce<T> {
 
 impl<T> Future for &'static AsyncOnce<T> {
     type Output = &'static T;
+    #[inline(always)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<&'static T> {
         if let Some(ptr) = unsafe { self.ptr.as_ref() } {
             return Poll::Ready(ptr);
@@ -72,8 +74,8 @@ impl<T> Future for &'static AsyncOnce<T> {
                     result = Some(val);
                 }
             }
-            if result.is_some() {
-                *fut = Ok(result.unwrap());
+            if let Some(val) = result {
+                *fut = Ok(val);
                 let ptr = fut.as_ref().ok().unwrap() as *const T;
                 let this = (*self) as *const _ as *mut AsyncOnce<T>;
                 unsafe {
@@ -91,14 +93,14 @@ fn lazy_static_test_for_tokio() {
     use futures_timer::Delay;
     use lazy_static::lazy_static;
     use std::time::Duration;
-    use tokio::runtime::Runtime;
+    use tokio::runtime::Builder;
     lazy_static! {
         static ref FOO: AsyncOnce<u32> = AsyncOnce::new(async {
             Delay::new(Duration::from_millis(100)).await;
             1
         });
     }
-    let mut rt = Runtime::new().unwrap();
+    let rt = Builder::new_current_thread().build().unwrap();
     rt.spawn(async { assert_eq!(FOO.get().await, &1) });
     rt.spawn(async { assert_eq!(FOO.get().await, &1) });
     rt.spawn(async { assert_eq!(FOO.get().await, &1) });

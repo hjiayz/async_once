@@ -2,7 +2,7 @@ use async_once::AsyncOnce;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use lazy_static::lazy_static;
 use std::ops::Deref;
-use tokio::runtime::Runtime;
+use tokio::runtime::Builder;
 
 lazy_static! {
     static ref FOO: AsyncOnce<u32> = AsyncOnce::new(async { 1 });
@@ -10,13 +10,13 @@ lazy_static! {
 
 lazy_static! {
     static ref FOO_SYNC: u32 = {
-        let mut rt = Runtime::new().unwrap();
+        let rt = Builder::new_current_thread().build().unwrap();
         rt.block_on(async { 1 })
     };
 }
 
 fn async_once_benchmark(c: &mut Criterion) {
-    let mut rt = Runtime::new().unwrap();
+    let rt = Builder::new_current_thread().build().unwrap();
     c.bench_function("async once", |b| {
         b.iter(|| {
             rt.block_on(async {
@@ -29,7 +29,7 @@ fn async_once_benchmark(c: &mut Criterion) {
 }
 
 fn sync_once_benchmark(c: &mut Criterion) {
-    let mut rt = Runtime::new().unwrap();
+    let rt = Builder::new_current_thread().build().unwrap();
     c.bench_function("sync once", |b| {
         b.iter(|| {
             let _ = FOO_SYNC.deref();
