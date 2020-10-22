@@ -21,8 +21,10 @@
 
 #### run tests
 
-cargo test
-wasm-pack test --headless --chrome --firefox
+```bash
+   cargo test
+   wasm-pack test --headless --chrome --firefox
+```
 
 
 License: MIT OR Apache-2.0

@@ -19,8 +19,10 @@
 //!
 //! ### run tests
 //!
-//! cargo test
-//! wasm-pack test --headless --chrome --firefox
+//! ```bash
+//!    cargo test
+//!    wasm-pack test --headless --chrome --firefox
+//! ```
 //!
 
 use futures::future::FutureExt;
@@ -88,6 +90,7 @@ impl<T> Future for &'static AsyncOnce<T> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn lazy_static_test_for_tokio() {
     use futures_timer::Delay;
@@ -110,7 +113,7 @@ fn lazy_static_test_for_tokio() {
     });
 }
 
-#[cfg(not(target_os = "unknown"))]
+#[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn lazy_static_test_for_async_std() {
     use async_std::task;
@@ -131,7 +134,7 @@ fn lazy_static_test_for_async_std() {
         assert_eq!(FOO.get().await, &1);
     });
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn lazy_static_test_for_smol() {
     use futures_timer::Delay;
