@@ -28,11 +28,11 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::ptr::null;
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 
-type Fut<T> = RwLock<Result<T, Pin<Box<dyn Future<Output = T>>>>>;
+type Fut<T> = Mutex<Result<T, Pin<Box<dyn Future<Output = T>>>>>;
 pub struct AsyncOnce<T: 'static> {
     ptr: *const T,
     fut: Fut<T>,
@@ -47,7 +47,7 @@ impl<T> AsyncOnce<T> {
     {
         AsyncOnce {
             ptr: null(),
-            fut: RwLock::new(Err(Box::pin(fut))),
+            fut: Mutex::new(Err(Box::pin(fut))),
         }
     }
     #[inline(always)]
@@ -63,21 +63,20 @@ impl<T> Future for &'static AsyncOnce<T> {
         if let Some(ptr) = unsafe { self.ptr.as_ref() } {
             return Poll::Ready(ptr);
         }
-        if let Ok(val) = self.fut.try_read() {
-            if let Ok(val) = val.as_ref() {
-                return Poll::Ready(unsafe { (val as *const T).as_ref().unwrap() });
-            }
+        let mut val = self.fut.lock().unwrap();
+        if let Ok(read_value) = val.as_ref() {
+            return Poll::Ready(unsafe { (read_value as *const T).as_ref().unwrap() });
         }
-        if let Ok(mut fut) = self.fut.try_write() {
+        loop {
             let mut result = None;
-            if let Err(fut) = fut.as_mut() {
-                if let Poll::Ready(val) = Pin::new(fut).poll(cx) {
+            if let Err(val) = val.as_mut() {
+                if let Poll::Ready(val) = Pin::new(val).poll(cx) {
                     result = Some(val);
                 }
             }
-            if let Some(val) = result {
-                *fut = Ok(val);
-                let ptr = fut.as_ref().ok().unwrap() as *const T;
+            if let Some(res) = result {
+                *val = Ok(res);
+                let ptr = val.as_ref().ok().unwrap() as *const T;
                 let this = (*self) as *const _ as *mut AsyncOnce<T>;
                 unsafe {
                     (*this).ptr = ptr;
@@ -85,7 +84,6 @@ impl<T> Future for &'static AsyncOnce<T> {
                 return Poll::Ready(unsafe { &*ptr });
             }
         }
-        Poll::Pending
     }
 }
 
