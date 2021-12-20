@@ -25,6 +25,7 @@
 //! ```
 //!
 
+use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
 use std::ptr::null;
@@ -34,7 +35,7 @@ use std::task::Poll;
 
 type Fut<T> = Mutex<Result<T, Pin<Box<dyn Future<Output = T>>>>>;
 pub struct AsyncOnce<T: 'static> {
-    ptr: *const T,
+    ptr: Cell<*const T>,
     fut: Fut<T>,
 }
 
@@ -46,7 +47,7 @@ impl<T> AsyncOnce<T> {
         F: Future<Output = T> + 'static,
     {
         AsyncOnce {
-            ptr: null(),
+            ptr: Cell::new(null()),
             fut: Mutex::new(Err(Box::pin(fut))),
         }
     }
@@ -60,7 +61,7 @@ impl<T> Future for &'static AsyncOnce<T> {
     type Output = &'static T;
     #[inline(always)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<&'static T> {
-        if let Some(ptr) = unsafe { self.ptr.as_ref() } {
+        if let Some(ptr) = unsafe { self.ptr.get().as_ref() } {
             return Poll::Ready(ptr);
         }
         let mut val = self.fut.lock().unwrap();
@@ -77,10 +78,7 @@ impl<T> Future for &'static AsyncOnce<T> {
             if let Some(res) = result {
                 *val = Ok(res);
                 let ptr = val.as_ref().ok().unwrap() as *const T;
-                let this = (*self) as *const _ as *mut AsyncOnce<T>;
-                unsafe {
-                    (*this).ptr = ptr;
-                }
+                self.ptr.set(ptr);
                 return Poll::Ready(unsafe { &*ptr });
             }
         }
