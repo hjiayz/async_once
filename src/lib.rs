@@ -102,11 +102,9 @@ impl<T> Future for &'static AsyncOnce<T> {
                 let mut ctx = Context::from_waker(&waker);
                 match Pin::new(fut).poll(&mut ctx) {
                     Poll::Ready(res) => {
-                        println!("ready");
                         result = Some(res);
                     }
                     Poll::Pending => {
-                        println!("pending");
                         return Poll::Pending;
                     }
                 }
