@@ -1,6 +1,6 @@
 [package]
 name = 'async_once'
-version = '0.2.4'
+version = '0.2.5'
 authors = ['hjiayz <hjiayz@gmail.com>']
 edition = '2018'
 keywords = [
@@ -23,6 +23,7 @@ wasm-bindgen-test = "0.3.18"
 wasm-bindgen-futures = "0.4.18"
 futures-timer = "3.0.2"
 gloo-timers = "0.2.1"
+futures = "0.3.19"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { version = "1.14.0", features = ["full"] }

@@ -31,15 +31,12 @@ use std::pin::Pin;
 use std::ptr::null;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Wake;
 use std::task::Waker;
 
-
-type Fut<T> = Mutex<Result<T,Pin<Box<dyn Future<Output = T>>>>>;
+type Fut<T> = Mutex<Result<T, Pin<Box<dyn Future<Output = T>>>>>;
 pub struct AsyncOnce<T: 'static> {
     ptr: Cell<*const T>,
     fut: Fut<T>,
@@ -56,9 +53,8 @@ impl<T> AsyncOnce<T> {
         AsyncOnce {
             ptr: Cell::new(null()),
             fut: Mutex::new(Err(Box::pin(fut))),
-            waker: Arc::new(MyWaker{
-                is_ok:AtomicBool::new(false),
-                wakers:Mutex::new(Vec::new()),
+            waker: Arc::new(MyWaker {
+                wakers: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -68,9 +64,8 @@ impl<T> AsyncOnce<T> {
     }
 }
 
-struct MyWaker{
-    is_ok:AtomicBool,
-    wakers:Mutex<Vec<Waker>>,
+struct MyWaker {
+    wakers: Mutex<Vec<Waker>>,
 }
 
 impl Wake for MyWaker {
@@ -79,9 +74,10 @@ impl Wake for MyWaker {
     }
 
     fn wake(self: std::sync::Arc<Self>) {
-        self.is_ok.store(true, Ordering::SeqCst);
         let mut wakers = self.wakers.lock().unwrap();
-        wakers.pop().unwrap().wake();
+        while let Some(waker) = wakers.pop() {
+            waker.wake();
+        }
         drop(wakers);
     }
 }
@@ -93,28 +89,32 @@ impl<T> Future for &'static AsyncOnce<T> {
         if let Some(ptr) = unsafe { self.ptr.get().as_ref() } {
             return Poll::Ready(ptr);
         }
-        let cxwaker=cx.waker().clone();
-        let mut wakers =  self.waker.wakers.lock().unwrap();
+        let cxwaker = cx.waker().clone();
+        let mut wakers = self.waker.wakers.lock().unwrap();
         wakers.push(cxwaker);
-        let is_first_or_ready = wakers.len()==1 || self.waker.is_ok.load(Ordering::SeqCst);
+        let is_first = wakers.len() == 1;
         drop(wakers);
         let mut result = None;
         let mut fut = self.fut.lock().unwrap();
-        match (is_first_or_ready,fut.as_mut()) {
-            (true,Err(fut)) => {
+        match (is_first, fut.as_mut()) {
+            (true, Err(fut)) => {
                 let waker = Waker::from(self.waker.clone());
                 let mut ctx = Context::from_waker(&waker);
                 match Pin::new(fut).poll(&mut ctx) {
                     Poll::Ready(res) => {
-                        result=Some(res);
-                    },
-                    Poll::Pending => return Poll::Pending,
+                        println!("ready");
+                        result = Some(res);
+                    }
+                    Poll::Pending => {
+                        println!("pending");
+                        return Poll::Pending;
+                    }
                 }
             }
-            (true,Ok(res))=>{
+            (true, Ok(res)) => {
                 return Poll::Ready(unsafe { (res as *const T).as_ref().unwrap() });
             }
-            _=>(),
+            _ => (),
         }
         if let Some(res) = result {
             *fut = Ok(res);
@@ -148,12 +148,24 @@ fn lazy_static_test_for_tokio() {
         });
     }
     let rt = Builder::new_current_thread().build().unwrap();
-    rt.spawn(async { assert_eq!(FOO.get().await, &1) });
-    rt.spawn(async { assert_eq!(FOO.get().await, &1) });
-    rt.spawn(async { assert_eq!(FOO.get().await, &1) });
+    let handle1 = rt.spawn(async {
+        Delay::new(Duration::from_millis(100)).await;
+        assert_eq!(FOO.get().await, &1)
+    });
+    let handle2 = rt.spawn(async {
+        Delay::new(Duration::from_millis(150)).await;
+        assert_eq!(FOO.get().await, &1)
+    });
     rt.block_on(async {
-        Delay::new(Duration::from_millis(200)).await;
-        assert_eq!(FOO.get().await, &1);
+        use futures::future;
+        Delay::new(Duration::from_millis(50)).await;
+        let value = match future::select(FOO.get(), future::ready(1u32)).await {
+            future::Either::Left((value, _)) => *value,
+            future::Either::Right((value, _)) => value,
+        };
+        assert_eq!(&value, &1);
+        let _ = handle1.await;
+        let _ = handle2.await;
     });
 }
 
