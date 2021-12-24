@@ -54,7 +54,7 @@ impl<T> AsyncOnce<T> {
             ptr: Cell::new(null()),
             fut: Mutex::new(Err(Box::pin(fut))),
             waker: Arc::new(MyWaker {
-                wakers: Mutex::new(Vec::new()),
+                wakers: Mutex::new(Vec::with_capacity(16)),
             }),
         }
     }
@@ -91,8 +91,10 @@ impl<T> Future for &'static AsyncOnce<T> {
         }
         let cxwaker = cx.waker().clone();
         let mut wakers = self.waker.wakers.lock().unwrap();
-        wakers.push(cxwaker);
-        let is_first = wakers.len() == 1;
+        let is_first = wakers.is_empty();
+        if !wakers.iter().any(|wk| wk.will_wake(&cxwaker)) {
+            wakers.push(cxwaker);
+        }
         drop(wakers);
         let mut result = None;
         let mut fut = self.fut.lock().unwrap();
