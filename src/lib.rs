@@ -25,111 +25,54 @@
 //! ```
 //!
 
-use std::cell::Cell;
 use std::future::Future;
 use std::pin::Pin;
-use std::ptr::null;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
-use std::task::Wake;
-use std::task::Waker;
 
-type Fut<T> = Mutex<Result<T, Pin<Box<dyn Future<Output = T>>>>>;
 pub struct AsyncOnce<T: 'static> {
-    ptr: Cell<*const T>,
-    fut: Fut<T>,
-    waker: Arc<MyWaker>,
+    fut: parking_lot::Mutex<Pin<Box<dyn Future<Output = T> + Send + Sync>>>,
+    value: once_cell::sync::OnceCell<T>,
 }
-
-unsafe impl<T: 'static> Sync for AsyncOnce<T> {}
 
 impl<T> AsyncOnce<T> {
     pub fn new<F>(fut: F) -> AsyncOnce<T>
     where
-        F: Future<Output = T> + 'static,
+        F: Future<Output = T> + Send + Sync + 'static,
     {
-        AsyncOnce {
-            ptr: Cell::new(null()),
-            fut: Mutex::new(Err(Box::pin(fut))),
-            waker: Arc::new(MyWaker {
-                wakers: Mutex::new(Vec::with_capacity(16)),
-            }),
+        Self {
+            fut: parking_lot::Mutex::new(Box::pin(fut)),
+            value: once_cell::sync::OnceCell::new(),
         }
     }
     #[inline(always)]
     pub fn get(&'static self) -> &'static Self {
         self
     }
-}
 
-struct MyWaker {
-    wakers: Mutex<Vec<Waker>>,
-}
-
-impl Wake for MyWaker {
-    fn wake_by_ref(self: &std::sync::Arc<Self>) {
-        self.clone().wake();
-    }
-
-    fn wake(self: std::sync::Arc<Self>) {
-        let mut wakers = self.wakers.lock().unwrap();
-        while let Some(waker) = wakers.pop() {
-            waker.wake();
-        }
-        drop(wakers);
+    fn set_value(&'static self, value: T) -> &'static T {
+        self
+            .value
+            .try_insert(value)
+            .map_err(|_| ())
+            .expect("The value was already set before")
     }
 }
 
-impl<T> Future for &'static AsyncOnce<T> {
+impl<T: Send + Sync + 'static> Future for &'static AsyncOnce<T> {
     type Output = &'static T;
+
     #[inline(always)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<&'static T> {
-        if let Some(ptr) = unsafe { self.ptr.get().as_ref() } {
-            return Poll::Ready(ptr);
+        if let Some(value) = self.value.get() {
+            return Poll::Ready(value);
         }
-        let cxwaker = cx.waker().clone();
-        let mut wakers = self.waker.wakers.lock().unwrap();
-        let is_first = wakers.is_empty();
-        if !wakers.iter().any(|wk| wk.will_wake(&cxwaker)) {
-            wakers.push(cxwaker);
+
+        let mut fut = self.fut.lock();
+        match Pin::new(&mut *fut).poll(cx) {
+            Poll::Ready(value) => Poll::Ready((&**self).set_value(value)),
+            Poll::Pending => Poll::Pending,
         }
-        drop(wakers);
-        let mut result = None;
-        let mut fut = self.fut.lock().unwrap();
-        match (is_first, fut.as_mut()) {
-            (true, Err(fut)) => {
-                let waker = Waker::from(self.waker.clone());
-                let mut ctx = Context::from_waker(&waker);
-                match Pin::new(fut).poll(&mut ctx) {
-                    Poll::Ready(res) => {
-                        result = Some(res);
-                    }
-                    Poll::Pending => {
-                        return Poll::Pending;
-                    }
-                }
-            }
-            (true, Ok(res)) => {
-                return Poll::Ready(unsafe { (res as *const T).as_ref().unwrap() });
-            }
-            _ => (),
-        }
-        if let Some(res) = result {
-            *fut = Ok(res);
-            let ptr = fut.as_ref().ok().unwrap() as *const T;
-            self.ptr.set(ptr);
-            drop(fut);
-            let mut wakers = self.waker.wakers.lock().unwrap();
-            while let Some(waker) = wakers.pop() {
-                waker.wake();
-            }
-            drop(wakers);
-            return Poll::Ready(unsafe { &*ptr });
-        }
-        drop(fut);
-        Poll::Pending
     }
 }
 
